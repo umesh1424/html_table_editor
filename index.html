@@ -1248,8 +1248,8 @@
     <!-- ===== PROFESSIONAL TABBED RIBBON BAR ===== -->
     <div class="ribbon-container" id="ribbonBar">
         <div class="ribbon-tabs">
-            <div class="ribbon-tab active" data-tab="file">File</div>
-            <div class="ribbon-tab" data-tab="home">Home</div>
+            <div class="ribbon-tab" data-tab="file">File</div>
+            <div class="ribbon-tab active" data-tab="home">Home</div>
             <div class="ribbon-tab" data-tab="insert">Insert</div>
             <div class="ribbon-tab" data-tab="formulas">Formulas</div>
             <div class="ribbon-tab" data-tab="data">Data</div>
@@ -1259,7 +1259,7 @@
         </div>
 
         <!-- File Content -->
-        <div class="ribbon-content active" id="tab-file">
+        <div class="ribbon-content" id="tab-file">
             <div class="ribbon-group">
                 <div class="ribbon-group-row">
                     <button class="ribbon-btn" onclick="newSpreadsheet()">📄 New Sheet</button>
@@ -1289,7 +1289,7 @@
         </div>
 
         <!-- Home Content -->
-        <div class="ribbon-content" id="tab-home">
+        <div class="ribbon-content active" id="tab-home">
             <div class="ribbon-group">
                 <div class="ribbon-group-row">
                     <button class="ribbon-btn" onclick="copySelection()">✂️ Copy</button>
@@ -4601,6 +4601,13 @@
                 if (state.undoStack.length > state.maxUndo) {
                     state.undoStack.shift();
                 }
+                notifyGridDataChanged();
+            }
+
+            function notifyGridDataChanged() {
+                if (typeof window.onGridChange === 'function') {
+                    window.onGridChange();
+                }
             }
 
             window.undo = function() {
@@ -4620,6 +4627,7 @@
                 
                 render();
                 updateSmartView();
+                notifyGridDataChanged();
             };
 
             window.redo = function() {
@@ -4639,6 +4647,7 @@
                 
                 render();
                 updateSmartView();
+                notifyGridDataChanged();
             };
 
             // -------- SYSTEM UTILITIES & HELPERS --------
@@ -4844,6 +4853,301 @@
             function escapeHtml(string) {
                 return String(string).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
             }
+
+            // -------- LEVELUP INTEGRATION HOOKS & ENGINE --------
+            function normalizeSheetData(sheet) {
+                if (!sheet) return createEmptySheetData();
+                const normalized = createEmptySheetData();
+
+                if (Array.isArray(sheet.colWidths) && sheet.colWidths.length > 0) {
+                    normalized.colWidths = [];
+                    for (let c = 0; c < COLS; c++) {
+                        normalized.colWidths[c] = typeof sheet.colWidths[c] === 'number' ? sheet.colWidths[c] : DEFAULT_COL_WIDTH;
+                    }
+                }
+                if (Array.isArray(sheet.rowHeights) && sheet.rowHeights.length > 0) {
+                    normalized.rowHeights = [];
+                    for (let r = 0; r < ROWS; r++) {
+                        normalized.rowHeights[r] = typeof sheet.rowHeights[r] === 'number' ? sheet.rowHeights[r] : DEFAULT_ROW_HEIGHT;
+                    }
+                }
+                if (Array.isArray(sheet.merges)) normalized.merges = sheet.merges;
+                if (Array.isArray(sheet.charts)) normalized.charts = sheet.charts;
+                if (Array.isArray(sheet.mediaObjects)) normalized.mediaObjects = sheet.mediaObjects;
+                if (Array.isArray(sheet.filters)) normalized.filters = sheet.filters;
+                if (sheet.validationRules && typeof sheet.validationRules === 'object') normalized.validationRules = sheet.validationRules;
+                if (Array.isArray(sheet.condFormatting)) normalized.condFormatting = sheet.condFormatting;
+                if (sheet.freezePanes && typeof sheet.freezePanes === 'object') normalized.freezePanes = sheet.freezePanes;
+
+                if (Array.isArray(sheet.cells)) {
+                    for (let r = 0; r < Math.min(ROWS, sheet.cells.length); r++) {
+                        if (Array.isArray(sheet.cells[r])) {
+                            for (let c = 0; c < Math.min(COLS, sheet.cells[r].length); c++) {
+                                const cell = sheet.cells[r][c];
+                                if (cell !== undefined && cell !== null) {
+                                    if (typeof cell === 'object') {
+                                        normalized.cells[r][c] = {
+                                            value: cell.value !== undefined ? cell.value : '',
+                                            raw: cell.raw !== undefined ? cell.raw : (cell.value !== undefined ? String(cell.value) : ''),
+                                            style: (cell.style && typeof cell.style === 'object') ? { ...cell.style } : {},
+                                            format: cell.format || 'general'
+                                        };
+                                    } else {
+                                        const rawStr = String(cell);
+                                        normalized.cells[r][c] = {
+                                            value: isNaN(Number(cell)) ? cell : Number(cell),
+                                            raw: rawStr,
+                                            style: {},
+                                            format: 'general'
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return normalized;
+            }
+
+            function importHtmlTable(htmlString) {
+                try {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlString, 'text/html');
+                    const table = doc.querySelector('table');
+                    if (!table) return;
+                    const newSheet = createEmptySheetData();
+                    const rows = table.querySelectorAll('tr');
+                    rows.forEach((tr, rIdx) => {
+                        if (rIdx >= ROWS) return;
+                        const cells = tr.querySelectorAll('td, th');
+                        cells.forEach((td, cIdx) => {
+                            if (cIdx >= COLS) return;
+                            const text = td.textContent.trim();
+                            const raw = td.getAttribute('data-formula') || text;
+                            newSheet.cells[rIdx][cIdx] = {
+                                value: raw.startsWith('=') ? evaluateFormula(raw, { row: rIdx, col: cIdx }) : (isNaN(Number(text)) || text === '' ? text : Number(text)),
+                                raw: raw,
+                                style: {},
+                                format: 'general'
+                            };
+                        });
+                    });
+                    state.sheets[state.activeSheet] = newSheet;
+                    propagateCalculations();
+                    render();
+                    updateSmartView();
+                    updateFormulaBar();
+                } catch(e) {
+                    console.warn('[importHtmlTable error]:', e);
+                }
+            }
+
+            window.gridData = state.sheets;
+            window.workbookData = state.sheets;
+
+            window.exportGridData = function() {
+                return JSON.stringify({
+                    sheets: state.sheets,
+                    activeSheet: state.activeSheet
+                });
+            };
+
+            window.importGridData = function(data) {
+                if (!data) return;
+                try {
+                    let parsed = data;
+                    if (typeof data === 'string') {
+                        const trimmed = data.trim();
+                        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                            parsed = JSON.parse(trimmed);
+                        } else if (trimmed.includes('<table') || trimmed.includes('<div class="grid"')) {
+                            importHtmlTable(trimmed);
+                            return;
+                        } else {
+                            return;
+                        }
+                    }
+
+                    let incomingSheets = null;
+                    let targetActiveSheet = null;
+
+                    if (parsed && typeof parsed === 'object') {
+                        if (parsed.sheets && typeof parsed.sheets === 'object') {
+                            incomingSheets = parsed.sheets;
+                            targetActiveSheet = parsed.activeSheet;
+                        } else if (parsed['Sheet1'] || Object.keys(parsed).some(k => parsed[k] && parsed[k].cells)) {
+                            incomingSheets = parsed;
+                            targetActiveSheet = Object.keys(parsed)[0];
+                        } else if (Array.isArray(parsed)) {
+                            incomingSheets = { 'Sheet1': { cells: parsed } };
+                            targetActiveSheet = 'Sheet1';
+                        }
+                    }
+
+                    if (incomingSheets && typeof incomingSheets === 'object') {
+                        const restoredSheets = {};
+                        for (const sheetName in incomingSheets) {
+                            restoredSheets[sheetName] = normalizeSheetData(incomingSheets[sheetName]);
+                        }
+                        state.sheets = restoredSheets;
+                        state.activeSheet = (targetActiveSheet && state.sheets[targetActiveSheet]) ? targetActiveSheet : Object.keys(state.sheets)[0];
+                        window.gridData = state.sheets;
+                        window.workbookData = state.sheets;
+                        propagateCalculations();
+                        render();
+                        updateSmartView();
+                        updateFormulaBar();
+                    }
+                } catch (e) {
+                    console.warn('[LevelUp importGridData Error]:', e);
+                }
+            };
+        })();
+    </script>
+
+    <!-- LevelUp Platform Integration Protocol -->
+    <script>
+        (function() {
+          'use strict';
+          const PROTOCOL_VERSION = 'LEVELUP_EDITOR_v1';
+          const EXPECTED_ORIGIN = 'https://levelup.technikh.com';
+          let validatedParentOrigin = null;
+          let currentQuestionId = null;
+          let initReceived = false;
+          let readyInterval = null;
+          let autosaveDebounceTimer = null;
+
+          function isTrustedOrigin(origin) {
+            if (origin === EXPECTED_ORIGIN) return true;
+            // Support local automated tests or development on localhost/127.0.0.1/file:
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:') {
+              if (!origin || origin === 'null' || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+                return true;
+              }
+            }
+            return false;
+          }
+
+          function getTargetOrigin() {
+            if (validatedParentOrigin && validatedParentOrigin !== '' && validatedParentOrigin !== 'null') {
+              return validatedParentOrigin;
+            }
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:') {
+              return '*';
+            }
+            return EXPECTED_ORIGIN;
+          }
+
+          function notifyReady() {
+            if (!window.parent || window.parent === window) return;
+            const target = getTargetOrigin();
+            window.parent.postMessage({
+              protocol: PROTOCOL_VERSION,
+              type: 'EDITOR_READY',
+              payload: { ready: true },
+              timestamp: Date.now()
+            }, target);
+          }
+
+          function startReadyHeartbeat() {
+            notifyReady();
+            if (window.parent && window.parent !== window && !initReceived) {
+              let attempts = 0;
+              readyInterval = setInterval(function() {
+                attempts++;
+                if (initReceived || attempts > 10) {
+                  clearInterval(readyInterval);
+                  return;
+                }
+                notifyReady();
+              }, 1000);
+            }
+          }
+
+          function getTableDataPayload() {
+            // If user is currently typing in a cell, flush and commit it first
+            const activeInput = document.querySelector('.cell-input');
+            if (activeInput && typeof activeInput.blur === 'function') {
+              activeInput.blur();
+            }
+
+            let tableData = '';
+            if (typeof window.exportGridData === 'function') {
+              tableData = window.exportGridData();
+            } else if (window.workbookData || window.gridData) {
+              tableData = JSON.stringify(window.workbookData || window.gridData);
+            } else {
+              const tableEl = document.querySelector('.grid') || document.querySelector('table');
+              if (tableEl) tableData = tableEl.outerHTML;
+            }
+            return { data: tableData, timestamp: Date.now() };
+          }
+
+          function sendAutosaveNotification() {
+            if (!window.parent || window.parent === window) return;
+            const target = getTargetOrigin();
+            const payload = getTableDataPayload();
+            window.parent.postMessage({
+              protocol: PROTOCOL_VERSION,
+              type: 'AUTOSAVE_NOTIFY',
+              questionId: currentQuestionId,
+              payload: payload,
+              timestamp: Date.now()
+            }, target);
+          }
+
+          // Hook into grid edits for real-time autosaving
+          window.onGridChange = function() {
+            if (!window.parent || window.parent === window) return;
+            if (autosaveDebounceTimer) clearTimeout(autosaveDebounceTimer);
+            autosaveDebounceTimer = setTimeout(function() {
+              sendAutosaveNotification();
+            }, 300);
+          };
+
+          window.addEventListener('message', function(event) {
+            // Validate expected parent window
+            if (!window.parent || window.parent === window || event.source !== window.parent) return;
+
+            // Validate parent origin strictly
+            if (!isTrustedOrigin(event.origin)) {
+              console.warn('[LevelUp Integration] Rejected message from unvalidated origin:', event.origin);
+              return;
+            }
+
+            // Record validated parent origin for subsequent responses
+            if (event.origin && event.origin !== 'null') {
+              validatedParentOrigin = event.origin;
+            }
+
+            const msg = event.data;
+            if (!msg || typeof msg !== 'object' || msg.protocol !== PROTOCOL_VERSION) return;
+            if (msg.questionId) currentQuestionId = msg.questionId;
+            else if (msg.payload && msg.payload.questionId) currentQuestionId = msg.payload.questionId;
+
+            if (msg.type === 'LEVELUP_INIT') {
+              initReceived = true;
+              if (readyInterval) clearInterval(readyInterval);
+              const data = msg.payload?.data || msg.payload?.code || '';
+              if (data && typeof window.importGridData === 'function') {
+                window.importGridData(data);
+              }
+            } else if (msg.type === 'REQUEST_GET_CONTENT') {
+              if (autosaveDebounceTimer) clearTimeout(autosaveDebounceTimer);
+              const payload = getTableDataPayload();
+              const target = getTargetOrigin();
+              event.source.postMessage({
+                protocol: PROTOCOL_VERSION,
+                type: 'RESPONSE_GET_CONTENT',
+                questionId: currentQuestionId,
+                payload: payload,
+                timestamp: Date.now()
+              }, target);
+            }
+          });
+
+          if (document.readyState === 'complete') startReadyHeartbeat();
+          else window.addEventListener('load', startReadyHeartbeat);
         })();
     </script>
 </body>
