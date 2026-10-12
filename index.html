@@ -4604,6 +4604,28 @@
                 notifyGridDataChanged();
             }
 
+            // Add to Table Editor's main script
+            const LEVELUP_PROTOCOL = 'LEVELUP_EDITOR_v1';
+            const ALLOWED_PARENT_ORIGINS = ['https://levelup.technikh.com', 'http://localhost:3000'];
+
+            // Autosave notification on cell change
+            function notifyLevelUpChange(tableData) {
+              if (window.parent && window.parent !== window) {
+                const dataToSend = tableData !== undefined ? tableData : (typeof window.exportGridData === 'function' ? window.exportGridData() : '');
+                const qId = (typeof window.getCurrentQuestionId === 'function') ? window.getCurrentQuestionId() : (window.currentQuestionId || undefined);
+                const msg = {
+                  protocol: LEVELUP_PROTOCOL,
+                  type: 'AUTOSAVE_NOTIFY',
+                  payload: { data: dataToSend },
+                  timestamp: Date.now()
+                };
+                if (qId) msg.questionId = qId;
+                window.parent.postMessage(msg, '*');
+              }
+            }
+            window.notifyLevelUpChange = notifyLevelUpChange;
+            window.ALLOWED_PARENT_ORIGINS = ALLOWED_PARENT_ORIGINS;
+
             function notifyGridDataChanged() {
                 if (typeof window.onGridChange === 'function') {
                     window.onGridChange();
@@ -5013,6 +5035,7 @@
           const EXPECTED_ORIGIN = 'https://levelup.technikh.com';
           let validatedParentOrigin = null;
           let currentQuestionId = null;
+          window.getCurrentQuestionId = function() { return currentQuestionId; };
           let initReceived = false;
           let readyInterval = null;
           let autosaveDebounceTimer = null;
@@ -5122,8 +5145,13 @@
 
             const msg = event.data;
             if (!msg || typeof msg !== 'object' || msg.protocol !== PROTOCOL_VERSION) return;
-            if (msg.questionId) currentQuestionId = msg.questionId;
-            else if (msg.payload && msg.payload.questionId) currentQuestionId = msg.payload.questionId;
+            if (msg.questionId) {
+              currentQuestionId = msg.questionId;
+              window.currentQuestionId = msg.questionId;
+            } else if (msg.payload && msg.payload.questionId) {
+              currentQuestionId = msg.payload.questionId;
+              window.currentQuestionId = msg.payload.questionId;
+            }
 
             if (msg.type === 'LEVELUP_INIT') {
               initReceived = true;
