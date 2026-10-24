@@ -257,6 +257,97 @@
             background: rgba(255, 255, 255, 0.3);
         }
 
+        .btn-submit-quiz {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            padding: 5px 15px;
+            border-radius: 18px;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            white-space: nowrap;
+            letter-spacing: 0.3px;
+        }
+        .btn-submit-quiz:hover {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.45);
+        }
+        .btn-submit-quiz:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+        .btn-submit-quiz.submitted {
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+            box-shadow: 0 0 14px rgba(14, 165, 233, 0.5) !important;
+        }
+
+        .quiz-submit-toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            background: #ffffff;
+            color: #0f172a;
+            border: 2px solid #10b981;
+            padding: 12px 18px;
+            border-radius: 12px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25), 0 0 18px rgba(16, 185, 129, 0.3);
+            z-index: 999999;
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease;
+            opacity: 0;
+            pointer-events: none;
+            max-width: 480px;
+            font-family: var(--font-main);
+        }
+        .quiz-submit-toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .quiz-submit-toast .toast-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .quiz-submit-toast .toast-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+        .quiz-submit-toast .toast-text strong {
+            display: block;
+            font-size: 13px;
+            font-weight: 700;
+            color: #047857;
+        }
+        .quiz-submit-toast .toast-text p {
+            margin: 2px 0 0;
+            font-size: 11px;
+            color: #475569;
+            line-height: 1.4;
+        }
+        .quiz-submit-toast .toast-close {
+            background: none;
+            border: none;
+            font-size: 14px;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 4px;
+            margin-left: 8px;
+            border-radius: 4px;
+            transition: color 0.15s;
+        }
+        .quiz-submit-toast .toast-close:hover {
+            color: #0f172a;
+        }
+
         /* ===== PROFESSIONAL EXCEL RIBBON ===== */
         .ribbon-container {
             background: var(--ribbon-bg);
@@ -1203,6 +1294,18 @@
 </head>
 <body class="theme-emerald">
 
+    <!-- Toast Notification for Quiz Submission -->
+    <div class="quiz-submit-toast" id="quizSubmitToast">
+        <div class="toast-content">
+            <span class="toast-icon">🚀</span>
+            <div class="toast-text">
+                <strong>Spreadsheet Submitted to Quiz!</strong>
+                <p>Your table data has been saved directly to your quiz answer.<br>Switch back to your quiz tab and click <strong>Submit Quiz</strong> to complete.</p>
+            </div>
+            <button class="toast-close" onclick="window.hideQuizSubmitToast()" title="Close notification">✕</button>
+        </div>
+    </div>
+
     <!-- ===== TOP DASHBOARD HEADER BAR ===== -->
     <div class="dashboard-header" id="dashboardHeader">
         <div class="brand-group">
@@ -1242,6 +1345,11 @@
             <button class="toggle-academy-btn" id="btnToggleAcademy">
                 📚 <span>Academy: Open</span>
             </button>
+
+            <!-- Submit to Quiz Button -->
+            <button class="btn-submit-quiz" id="btnSubmitToQuiz" onclick="window.submitToLevelUpQuiz()" title="Submit your spreadsheet directly to the LevelUp quiz">
+                🚀 <span>Submit to Quiz</span>
+            </button>
         </div>
     </div>
 
@@ -1255,6 +1363,11 @@
             <div class="ribbon-tab" data-tab="data">Data</div>
             <div class="ribbon-tab" data-tab="view">View</div>
             <div class="ribbon-tab" data-tab="help">Help</div>
+            <div class="ribbon-submit-quiz-container" style="margin-left: auto; display: flex; align-items: center; padding-right: 8px;">
+                <button class="btn-submit-quiz" id="btnSubmitToQuizRibbon" onclick="window.submitToLevelUpQuiz()" title="Submit your spreadsheet directly to the LevelUp quiz">
+                    🚀 <span>Submit to Quiz</span>
+                </button>
+            </div>
             <div class="ribbon-collapse-toggle" id="ribbonToggle" title="Toggle Ribbon Collapse">▲</div>
         </div>
 
@@ -5031,6 +5144,141 @@
                     }
                 } catch (e) {
                     console.warn('[LevelUp importGridData Error]:', e);
+                }
+            };
+
+            window.exportGridDataToCsv = function() {
+                try {
+                    const sheet = state.sheets[state.activeSheet];
+                    if (!sheet || !sheet.cells) return '';
+                    let maxR = -1;
+                    let maxC = -1;
+                    for (let r = 0; r < ROWS; r++) {
+                        for (let c = 0; c < COLS; c++) {
+                            const cell = sheet.cells[r]?.[c];
+                            if (cell && (cell.raw !== '' || (cell.value !== '' && cell.value !== null && cell.value !== undefined))) {
+                                if (r > maxR) maxR = r;
+                                if (c > maxC) maxC = c;
+                            }
+                        }
+                    }
+                    if (maxR === -1 || maxC === -1) return '';
+                    const lines = [];
+                    for (let r = 0; r <= maxR; r++) {
+                        const row = [];
+                        for (let c = 0; c <= maxC; c++) {
+                            const cell = sheet.cells[r]?.[c];
+                            let val = cell ? (cell.value !== undefined && cell.value !== null ? String(cell.value) : '') : '';
+                            if (cell && cell.raw && String(cell.raw).startsWith('=')) {
+                                val = String(cell.value !== undefined && cell.value !== '' ? cell.value : cell.raw);
+                            }
+                            if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+                                val = `"${val.replace(/"/g, '""')}"`;
+                            }
+                            row.push(val);
+                        }
+                        lines.push(row.join(','));
+                    }
+                    return lines.join('\n');
+                } catch (e) {
+                    return '';
+                }
+            };
+
+            let toastTimeout = null;
+            window.hideQuizSubmitToast = function() {
+                const toast = document.getElementById('quizSubmitToast');
+                if (toast) toast.classList.remove('show');
+                if (toastTimeout) clearTimeout(toastTimeout);
+            };
+
+            window.submitToLevelUpQuiz = function() {
+                // 1. Commit active cell if currently editing
+                const activeInput = document.querySelector('.cell-input');
+                if (activeInput && typeof activeInput.blur === 'function') {
+                    activeInput.blur();
+                }
+
+                // 2. Export table data
+                const csvData = (typeof window.exportGridDataToCsv === 'function') ? window.exportGridDataToCsv() : '';
+                const fullJson = (typeof window.exportGridData === 'function') ? window.exportGridData() : '';
+                const dataToSend = csvData || fullJson;
+
+                const qId = (typeof window.getCurrentQuestionId === 'function') ? window.getCurrentQuestionId() :
+                            (window.currentQuestionId || new URLSearchParams(window.location.search).get('qid') || localStorage.getItem('levelup_current_editing_qid'));
+
+                const payload = {
+                    data: dataToSend,
+                    code: dataToSend,
+                    csv: csvData,
+                    json: fullJson
+                };
+
+                const msg = {
+                    protocol: 'LEVELUP_EDITOR_v1',
+                    type: 'CODESTUDIO_TRANSFER_CODE',
+                    questionId: qId,
+                    payload: payload,
+                    timestamp: Date.now()
+                };
+
+                // 3. Post to opener (if opened in popup or new tab)
+                if (window.opener && !window.opener.closed) {
+                    try {
+                        window.opener.postMessage(msg, '*');
+                    } catch (e) {
+                        console.warn('Failed to postMessage to opener:', e);
+                    }
+                }
+
+                // 4. Post to parent (if in iframe / modal)
+                if (window.parent && window.parent !== window) {
+                    try {
+                        window.parent.postMessage(msg, '*');
+                    } catch (e) {
+                        console.warn('Failed to postMessage to parent:', e);
+                    }
+                }
+
+                // 5. Cross-tab localStorage broadcast
+                try {
+                    localStorage.setItem('levelup_excel_autosave', JSON.stringify({
+                        questionId: qId,
+                        data: dataToSend,
+                        csv: csvData,
+                        json: fullJson,
+                        timestamp: Date.now()
+                    }));
+                    localStorage.setItem('levelup_excel_submission', JSON.stringify({
+                        questionId: qId,
+                        data: dataToSend,
+                        csv: csvData,
+                        json: fullJson,
+                        timestamp: Date.now()
+                    }));
+                } catch (e) {
+                    console.warn('Failed to save to localStorage:', e);
+                }
+
+                // 6. Visual feedback on all submit buttons
+                const submitButtons = document.querySelectorAll('.btn-submit-quiz');
+                submitButtons.forEach(btn => {
+                    btn.classList.add('submitted');
+                    btn.innerHTML = '✅ <span>Submitted to Quiz!</span>';
+                    setTimeout(() => {
+                        btn.classList.remove('submitted');
+                        btn.innerHTML = '🚀 <span>Submit to Quiz</span>';
+                    }, 3500);
+                });
+
+                // 7. Show toast notification
+                const toast = document.getElementById('quizSubmitToast');
+                if (toast) {
+                    toast.classList.add('show');
+                    if (toastTimeout) clearTimeout(toastTimeout);
+                    toastTimeout = setTimeout(() => {
+                        toast.classList.remove('show');
+                    }, 4000);
                 }
             };
         })();
