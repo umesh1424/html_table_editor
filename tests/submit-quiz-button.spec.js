@@ -15,6 +15,8 @@ test.describe('HTML Table Editor: Submit to Quiz Button Tests', () => {
     await expect(ribbonBtn).toBeVisible();
     await expect(ribbonBtn).toContainText('Submit to Quiz');
 
+    await page.screenshot({ path: 'tests/submit_btn_screenshot.png' });
+
     // 4. Fill in cell A1 with 'Notebook'
     const cellA1 = page.getByTestId('cell-0-0');
     await cellA1.click();
