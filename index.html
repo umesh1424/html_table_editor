@@ -5041,12 +5041,13 @@
           let autosaveDebounceTimer = null;
 
           function isTrustedOrigin(origin) {
+            if (!origin) return false;
             if (origin === EXPECTED_ORIGIN) return true;
-            // Support local automated tests or development on localhost/127.0.0.1/file:
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:') {
-              if (!origin || origin === 'null' || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
-                return true;
-              }
+            if (Array.isArray(window.ALLOWED_PARENT_ORIGINS) && window.ALLOWED_PARENT_ORIGINS.includes(origin)) return true;
+            if (typeof ALLOWED_PARENT_ORIGINS !== 'undefined' && Array.isArray(ALLOWED_PARENT_ORIGINS) && ALLOWED_PARENT_ORIGINS.includes(origin)) return true;
+            // Support local automated tests, intranet or dev servers (localhost, 127.0.0.1, 192.168.*, 10.*, etc.)
+            if (origin === 'null' || /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+              return true;
             }
             return false;
           }
@@ -5055,10 +5056,7 @@
             if (validatedParentOrigin && validatedParentOrigin !== '' && validatedParentOrigin !== 'null') {
               return validatedParentOrigin;
             }
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:') {
-              return '*';
-            }
-            return EXPECTED_ORIGIN;
+            return '*';
           }
 
           function notifyReady() {
