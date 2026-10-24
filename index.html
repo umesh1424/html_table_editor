@@ -4610,18 +4610,27 @@
 
             // Autosave notification on cell change
             function notifyLevelUpChange(tableData) {
-              if (window.parent && window.parent !== window) {
-                const dataToSend = tableData !== undefined ? tableData : (typeof window.exportGridData === 'function' ? window.exportGridData() : '');
-                const qId = (typeof window.getCurrentQuestionId === 'function') ? window.getCurrentQuestionId() : (window.currentQuestionId || undefined);
-                const msg = {
-                  protocol: LEVELUP_PROTOCOL,
-                  type: 'AUTOSAVE_NOTIFY',
-                  payload: { data: dataToSend },
-                  timestamp: Date.now()
-                };
-                if (qId) msg.questionId = qId;
-                window.parent.postMessage(msg, '*');
+              const hostWin = (window.parent && window.parent !== window) ? window.parent : (window.opener || null);
+              const dataToSend = tableData !== undefined ? tableData : (typeof window.exportGridData === 'function' ? window.exportGridData() : '');
+              const qId = (typeof window.getCurrentQuestionId === 'function') ? window.getCurrentQuestionId() : (window.currentQuestionId || undefined);
+              const msg = {
+                protocol: LEVELUP_PROTOCOL,
+                type: 'AUTOSAVE_NOTIFY',
+                payload: { data: dataToSend },
+                timestamp: Date.now()
+              };
+              if (qId) msg.questionId = qId;
+
+              if (hostWin) {
+                hostWin.postMessage(msg, '*');
               }
+              try {
+                localStorage.setItem('levelup_excel_autosave', JSON.stringify({
+                  questionId: qId,
+                  data: dataToSend,
+                  timestamp: Date.now()
+                }));
+              } catch (e) {}
             }
             window.notifyLevelUpChange = notifyLevelUpChange;
             window.ALLOWED_PARENT_ORIGINS = ALLOWED_PARENT_ORIGINS;
@@ -5059,10 +5068,17 @@
             return '*';
           }
 
+          function getHostWindow() {
+            if (window.parent && window.parent !== window) return window.parent;
+            if (window.opener && !window.opener.closed) return window.opener;
+            return null;
+          }
+
           function notifyReady() {
-            if (!window.parent || window.parent === window) return;
+            const hostWin = getHostWindow();
+            if (!hostWin) return;
             const target = getTargetOrigin();
-            window.parent.postMessage({
+            hostWin.postMessage({
               protocol: PROTOCOL_VERSION,
               type: 'EDITOR_READY',
               payload: { ready: true },
@@ -5072,7 +5088,8 @@
 
           function startReadyHeartbeat() {
             notifyReady();
-            if (window.parent && window.parent !== window && !initReceived) {
+            const hostWin = getHostWindow();
+            if (hostWin && !initReceived) {
               let attempts = 0;
               readyInterval = setInterval(function() {
                 attempts++;
@@ -5105,21 +5122,29 @@
           }
 
           function sendAutosaveNotification() {
-            if (!window.parent || window.parent === window) return;
+            const hostWin = getHostWindow();
             const target = getTargetOrigin();
             const payload = getTableDataPayload();
-            window.parent.postMessage({
-              protocol: PROTOCOL_VERSION,
-              type: 'AUTOSAVE_NOTIFY',
-              questionId: currentQuestionId,
-              payload: payload,
-              timestamp: Date.now()
-            }, target);
+            if (hostWin) {
+              hostWin.postMessage({
+                protocol: PROTOCOL_VERSION,
+                type: 'AUTOSAVE_NOTIFY',
+                questionId: currentQuestionId,
+                payload: payload,
+                timestamp: Date.now()
+              }, target);
+            }
+            try {
+              localStorage.setItem('levelup_excel_autosave', JSON.stringify({
+                questionId: currentQuestionId,
+                data: (payload && payload.data !== undefined) ? payload.data : payload,
+                timestamp: Date.now()
+              }));
+            } catch (e) {}
           }
 
           // Hook into grid edits for real-time autosaving
           window.onGridChange = function() {
-            if (!window.parent || window.parent === window) return;
             if (autosaveDebounceTimer) clearTimeout(autosaveDebounceTimer);
             autosaveDebounceTimer = setTimeout(function() {
               sendAutosaveNotification();
@@ -5127,8 +5152,10 @@
           };
 
           window.addEventListener('message', function(event) {
-            // Validate expected parent window
-            if (!window.parent || window.parent === window || event.source !== window.parent) return;
+            // Validate expected parent or opener window
+            const isExpectedHost = (window.parent && window.parent !== window && event.source === window.parent) ||
+                                   (window.opener && event.source === window.opener);
+            if (!isExpectedHost) return;
 
             // Validate parent origin strictly
             if (!isTrustedOrigin(event.origin)) {
@@ -5172,8 +5199,30 @@
             }
           });
 
-          if (document.readyState === 'complete') startReadyHeartbeat();
-          else window.addEventListener('load', startReadyHeartbeat);
+          function checkLocalStorageInitialData() {
+            try {
+              const urlParams = new URLSearchParams(window.location.search);
+              const qidParam = urlParams.get('qid') || localStorage.getItem('levelup_current_editing_qid');
+              if (qidParam) {
+                currentQuestionId = qidParam;
+                window.currentQuestionId = qidParam;
+                const cachedData = localStorage.getItem('levelup_excel_initial_' + qidParam);
+                if (cachedData && typeof window.importGridData === 'function') {
+                  setTimeout(function() {
+                    window.importGridData(cachedData);
+                  }, 200);
+                }
+              }
+            } catch (e) {}
+          }
+
+          function initializeIntegration() {
+            checkLocalStorageInitialData();
+            startReadyHeartbeat();
+          }
+
+          if (document.readyState === 'complete') initializeIntegration();
+          else window.addEventListener('load', initializeIntegration);
         })();
     </script>
 </body>
