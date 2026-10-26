@@ -5217,10 +5217,11 @@
                     timestamp: Date.now()
                 };
 
-                // 3. Post to opener (if opened in popup or new tab)
+                // 3. Post to opener (if opened in popup or new tab) and focus quiz tab
                 if (window.opener && !window.opener.closed) {
                     try {
                         window.opener.postMessage(msg, '*');
+                        window.opener.focus();
                     } catch (e) {
                         console.warn('Failed to postMessage to opener:', e);
                     }
