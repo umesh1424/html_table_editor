@@ -96,7 +96,8 @@ test.describe('End-to-End Quiz Platform: HTML (CodeStudio) & Excel (Table Editor
     await expect(page.locator('#question-badge')).toHaveText('Question 5 of 5');
 
     // --- QUESTION 5: EXCEL PRACTICAL (Table Editor Dual-Mode) ---
-    await expect(page.locator('#question-text-display')).toContainText('Quarterly Sales');
+    await expect(page.locator('#question-text-display')).toContainText('Create an Excel worksheet');
+    await expect(page.locator('.question-markdown-table-wrap')).toBeVisible();
 
     const optUploadBtn = page.locator('#excel-opt-upload-btn-q-demo-excel');
     const optEditorBtn = page.locator('#excel-opt-editor-btn-q-demo-excel');

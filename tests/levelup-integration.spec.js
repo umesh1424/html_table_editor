@@ -270,4 +270,48 @@ test.describe('LevelUp Table Editor Integration', () => {
     await frame.getByTestId('cell-3-1').click();
     await expect(frame.locator('#formulaInput')).toHaveValue('=SUM(B2:B3)');
   });
+
+  test('imports raw markdown tables and CSV into grid cells seamlessly', async ({ page }) => {
+    const harnessPath = `file://${path.resolve(__dirname, 'harness.html')}`;
+    await page.goto(harnessPath);
+
+    await expect(page.locator('#status')).toHaveText('READY_RECEIVED', { timeout: 10000 });
+    const frame = page.frameLocator('#editorFrame');
+
+    const sampleMarkdownTable = `
+| Student | Activity | Marks |
+| ------- | -------- | ----: |
+| Reema | Drawing | 93 |
+| Om | Quiz | 68 |
+| Sara | Drawing | 79 |
+`;
+
+    await page.evaluate((md) => {
+      const frameEl = document.getElementById('editorFrame');
+      frameEl.contentWindow.postMessage({
+        protocol: 'LEVELUP_EDITOR_v1',
+        type: 'LEVELUP_INIT',
+        questionId: 'q-excel-md',
+        payload: {
+          data: md,
+          questionId: 'q-excel-md'
+        },
+        timestamp: Date.now()
+      }, '*');
+    }, sampleMarkdownTable);
+
+    // Verify markdown table was parsed and rendered into grid cells
+    await expect(frame.getByTestId('cell-0-0').locator('.cell-content')).toHaveText('Student');
+    await expect(frame.getByTestId('cell-0-1').locator('.cell-content')).toHaveText('Activity');
+    await expect(frame.getByTestId('cell-0-2').locator('.cell-content')).toHaveText('Marks');
+
+    await expect(frame.getByTestId('cell-1-0').locator('.cell-content')).toHaveText('Reema');
+    await expect(frame.getByTestId('cell-1-1').locator('.cell-content')).toHaveText('Drawing');
+    await expect(frame.getByTestId('cell-1-2').locator('.cell-content')).toHaveText('93');
+
+    await expect(frame.getByTestId('cell-2-0').locator('.cell-content')).toHaveText('Om');
+    await expect(frame.getByTestId('cell-2-1').locator('.cell-content')).toHaveText('Quiz');
+    await expect(frame.getByTestId('cell-2-2').locator('.cell-content')).toHaveText('68');
+  });
 });
+
