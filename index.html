@@ -1363,11 +1363,6 @@
             <div class="ribbon-tab" data-tab="data">Data</div>
             <div class="ribbon-tab" data-tab="view">View</div>
             <div class="ribbon-tab" data-tab="help">Help</div>
-            <div class="ribbon-submit-quiz-container" style="margin-left: auto; display: flex; align-items: center; padding-right: 8px;">
-                <button class="btn-submit-quiz" id="btnSubmitToQuizRibbon" onclick="window.submitToLevelUpQuiz()" title="Submit your spreadsheet directly to the LevelUp quiz">
-                    🚀 <span>Submit to Quiz</span>
-                </button>
-            </div>
             <div class="ribbon-collapse-toggle" id="ribbonToggle" title="Toggle Ribbon Collapse">▲</div>
         </div>
 
@@ -5260,15 +5255,11 @@
                     console.warn('Failed to save to localStorage:', e);
                 }
 
-                // 6. Visual feedback on all submit buttons
+                // 6. Visual feedback on submit button
                 const submitButtons = document.querySelectorAll('.btn-submit-quiz');
                 submitButtons.forEach(btn => {
                     btn.classList.add('submitted');
-                    btn.innerHTML = '✅ <span>Submitted to Quiz!</span>';
-                    setTimeout(() => {
-                        btn.classList.remove('submitted');
-                        btn.innerHTML = '🚀 <span>Submit to Quiz</span>';
-                    }, 3500);
+                    btn.innerHTML = '✅ <span>Submitted! Closing...</span>';
                 });
 
                 // 7. Show toast notification
@@ -5280,6 +5271,21 @@
                         toast.classList.remove('show');
                     }, 4000);
                 }
+
+                // 8. Automatically close the HTML table editor page
+                setTimeout(() => {
+                    try {
+                        window.close();
+                    } catch (e) {
+                        console.warn('window.close() encountered an error:', e);
+                    }
+                    // Fallback if browser security prevents closing a non-script-opened tab
+                    setTimeout(() => {
+                        submitButtons.forEach(btn => {
+                            btn.innerHTML = '✅ <span>Submitted to Quiz!</span>';
+                        });
+                    }, 500);
+                }, 400);
             };
         })();
     </script>
