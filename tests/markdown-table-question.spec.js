@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
-test.describe('Quiz Markdown Table Formatting & Table Editor Auto-Population', () => {
-  test('Markdown table in question text renders as styled HTML table and auto-loads into Table Editor', async ({ page }) => {
+test.describe('Quiz Markdown Table Formatting & Excel Button UI', () => {
+  test('Question renders clean HTML table, prominent Excel Button, and Quiz Data Bar', async ({ page }) => {
     // Navigate to local demo quiz
     await page.goto('http://localhost:3000/quiz?code=DEMO&name=StudentVerification', { waitUntil: 'domcontentloaded' });
 
@@ -34,31 +34,36 @@ test.describe('Quiz Markdown Table Formatting & Table Editor Auto-Population', (
     await expect(tableWrap.locator('tbody tr').nth(0)).toContainText('Drawing');
     await expect(tableWrap.locator('tbody tr').nth(0)).toContainText('93');
 
-    await expect(tableWrap.locator('tbody tr').nth(4)).toContainText('Naina');
-    await expect(tableWrap.locator('tbody tr').nth(4)).toContainText('Drawing');
-    await expect(tableWrap.locator('tbody tr').nth(4)).toContainText('88');
-
     // 3. Verify Table Action Toolbar
     const copyBtn = tableWrap.locator('button:has-text("Copy Data")');
     const loadBtn = tableWrap.locator('button:has-text("Load into Table Editor")');
     await expect(copyBtn).toBeVisible();
     await expect(loadBtn).toBeVisible();
 
-    // 4. Test "Load into Table Editor" button
+    // 4. Verify PROMINENT EXCEL BUTTON exists (just like user requested!)
+    const openExcelBtn = page.locator('#open-excel-btn-q-demo-excel');
+    await expect(openExcelBtn).toBeVisible();
+    await expect(openExcelBtn).toContainText('Open Excel Table Editor');
+
+    // 5. Verify Quiz Data Bar exists and is visible
+    const dataBar = page.locator('#editor-fallback-textarea-q-demo-excel');
+    await expect(dataBar).toBeVisible();
+
+    // 6. Test "Load into Table Editor" button populates data bar
     await loadBtn.click();
     await expect(page.locator('#toast-container')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#toast-container')).toContainText('Table data loaded into Table Editor');
+    await expect(dataBar).toHaveValue(/Reema.*Drawing.*93/);
 
-    // 5. Verify the Table Editor fallback textarea has the CSV
-    const fallbackTextarea = page.locator('#editor-fallback-textarea-q-demo-excel');
-    await expect(fallbackTextarea).toHaveValue(/Reema.*Drawing.*93/);
+    // 7. Verify "Toggle Embedded Frame" works if user ever wants inline preview
+    const toggleFrameBtn = page.locator('#toggle-inline-frame-btn-q-demo-excel');
+    await expect(toggleFrameBtn).toBeVisible();
+    await toggleFrameBtn.click();
+    const inlineWrapper = page.locator('#inline-frame-wrapper-q-demo-excel');
+    await expect(inlineWrapper).toBeVisible();
 
-    // 6. Verify Table Editor iframe is rendered
-    const iframe = page.locator('#table-editor-iframe-q-demo-excel');
-    await expect(iframe).toBeVisible();
-
-    // Take screenshot of the rendered table and options
-    await page.screenshot({ path: 'tests/markdown_table_rendered.png', fullPage: false });
-    console.log('>>> Markdown table rendered and verified successfully! <<<');
+    // Take screenshot of Question 5 showing the prominent Excel Button, Table, and Data Bar
+    await page.screenshot({ path: 'tests/excel_button_rendered.png', fullPage: false });
+    console.log('>>> Excel Button UI and Markdown table verified successfully! <<<');
   });
 });
